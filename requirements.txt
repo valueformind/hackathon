@@ -1,0 +1,22 @@
+# ── Runtime ──────────────────────────────────────────────────────────
+# Required for inference.py (LLM-driven agent):
+openai>=1.30.0
+
+# Required for inference.py — my_env_v4 uses the Python Docker SDK
+# to spin up and tear down environment containers at runtime:
+docker>=7.0.0
+
+# ── Testing (optional, for local development) ────────────────────────
+# Uncomment to use pytest instead of unittest:
+# pytest>=8.0.0
+
+# ── Future RL training (not required for demo) ───────────────────────
+# Uncomment when adding a real training loop:
+# stable-baselines3>=2.3.0
+# gymnasium>=0.29.0
+# torch>=2.2.0
+
+# ── Future real test runner (not required for demo) ──────────────────
+# Uncomment when replacing simulated run_tests payloads:
+# pytest>=8.0.0
+# coverage>=7.4.0

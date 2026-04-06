@@ -1,0 +1,80 @@
+# ═══════════════════════════════════════════════════════════════════════
+# docker-compose.yml — RL Coding Environment
+#
+# Services:
+#   demo           — offline happy-path episode  (no API key needed)
+#   demo-policies  — offline policy comparison   (no API key needed)
+#   tests          — offline unit test suite      (no API key needed)
+#   inference      — LLM-driven agent via HF API  (needs HF_TOKEN +
+#                    Docker socket for my_env_v4 container management)
+#
+# Quick start:
+#   docker compose build
+#   docker compose run --rm demo
+#   docker compose run --rm demo-policies
+#   docker compose run --rm tests
+#   docker compose run --rm inference          # needs .env file
+#
+# All services share the same image built from ./Dockerfile.
+# ═══════════════════════════════════════════════════════════════════════
+
+x-base: &base                          # shared anchor — avoids repetition
+  build:
+    context: .
+    dockerfile: Dockerfile
+    target: runtime
+  image: rl-coding-env:latest
+
+
+services:
+
+  # ── Offline: single happy-path episode ─────────────────────────────────
+  demo:
+    <<: *base
+    command: python demo.py
+
+  # ── Offline: bad / improving / env-failure policy comparison ───────────
+  demo-policies:
+    <<: *base
+    command: python demo_policies.py
+
+  # ── Offline: full unittest suite (7 negative-scenario tests) ───────────
+  tests:
+    <<: *base
+    command: python -m unittest discover -s tests -p "test_*.py" -v
+
+  # ── Online: LLM-driven agent (requires credentials + Docker socket) ────
+  #
+  # Prerequisites:
+  #   1. Copy .env.example → .env and fill in HF_TOKEN and IMAGE_NAME.
+  #   2. Pull the hackathon env image:
+  #        docker pull <IMAGE_NAME>
+  #   3. Run:
+  #        docker compose run --rm inference
+  #
+  # The Docker socket mount (/var/run/docker.sock) lets my_env_v4 spin up
+  # and tear down environment containers from inside this container.
+  # ────────────────────────────────────────────────────────────────────────
+  inference:
+    <<: *base
+    command: python inference.py
+    env_file:
+      - path: .env
+        required: false          # won't fail if .env absent; use -e flags instead
+    environment:
+      # Credentials — override via .env or -e HF_TOKEN=<val>
+      - HF_TOKEN=${HF_TOKEN:-}
+      - API_KEY=${API_KEY:-}
+      # LLM endpoint — defaults match inference.py
+      - API_BASE_URL=${API_BASE_URL:-https://router.huggingface.co/v1}
+      - MODEL_NAME=${MODEL_NAME:-Qwen/Qwen2.5-72B-Instruct}
+      # my_env_v4 settings
+      - IMAGE_NAME=${IMAGE_NAME:-}
+      - MY_ENV_V4_TASK=${MY_ENV_V4_TASK:-echo}
+      - MY_ENV_V4_BENCHMARK=${MY_ENV_V4_BENCHMARK:-my_env_v4}
+    volumes:
+      # Required so my_env_v4 can start/stop Docker containers at runtime
+      - /var/run/docker.sock:/var/run/docker.sock
+    # Keep stdin open so the env container can attach if needed
+    stdin_open: true
+    tty: false

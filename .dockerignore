@@ -1,0 +1,41 @@
+# ── Credentials — NEVER bake secrets into the image ──────────────────────
+.env
+.env.*
+*.env
+
+# ── Python artefacts ─────────────────────────────────────────────────────
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+*.egg-info
+.eggs/
+
+# ── Virtual environments ──────────────────────────────────────────────────
+.venv
+venv
+
+# ── Dev / IDE ─────────────────────────────────────────────────────────────
+.DS_Store
+*.swp
+*.swo
+.idea/
+.vscode/
+.cursor/
+
+# ── Git ───────────────────────────────────────────────────────────────────
+.git
+.gitignore
+
+# ── Test / CI cache ───────────────────────────────────────────────────────
+.pytest_cache
+.mypy_cache
+.coverage
+htmlcov/
+
+# ── Docker compose override files (local dev only) ────────────────────────
+docker-compose.override.yml
+
+# ── Local stub for judge's package (real one installed by organizers) ─────
+# Uncomment if you want to exclude the stub from the submission image:
+# my_env_v4.py
