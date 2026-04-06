@@ -64,4 +64,4 @@ ENV MY_ENV_V4_BENCHMARK="my_env_v4"
 #   docker run --rm --env-file .env \
 #              -v /var/run/docker.sock:/var/run/docker.sock \
 #              rl-coding-env python inference.py
-CMD ["python", "demo.py"]
+CMD ["sh", "-c", "python demo.py && sleep infinity"]
