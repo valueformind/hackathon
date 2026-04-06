@@ -1,3 +1,16 @@
+---
+title: Hackathon
+emoji: 📉
+colorFrom: pink
+colorTo: yellow
+sdk: docker
+pinned: false
+license: apache-2.0
+---
+
+Check out the configuration reference at https://huggingface.co/docs/hub/spaces-config-reference
+
+
 # RL-Powered Coding Environment
 
 > An offline-first Reinforcement Learning environment where an AI agent automatically writes and improves tests based on code changes — and learns to do it better over time.
@@ -309,3 +322,5 @@ the agent container access to the host Docker daemon so it can manage those sub-
 - **Modular**: env / task / grader are independently replaceable
 - **Honest**: simulated parts are clearly labelled; the RL interface is real and stable
 - **Robust**: invalid actions, infra failures, deadlocks, and step limits all handled
+=======
+
