@@ -44,17 +44,22 @@ STDOUT FORMAT
 
 import asyncio
 import os
+import sys
 import textwrap
 from typing import List, Optional
 
 from openai import OpenAI
 
 from my_env_v4 import MyEnvV4Action, MyEnvV4Env
-IMAGE_NAME = os.getenv("IMAGE_NAME") # If you are using docker image 
-API_KEY = os.getenv("HF_TOKEN") or os.getenv("API_KEY")
 
-API_BASE_URL = os.getenv("API_BASE_URL") or "https://router.huggingface.co/v1"
-MODEL_NAME = os.getenv("MODEL_NAME") or "Qwen/Qwen2.5-72B-Instruct"
+IMAGE_NAME = os.getenv("IMAGE_NAME")  # If you are using docker image
+
+# ── Credentials & endpoint (hackathon required pattern) ──────────────────
+API_BASE_URL = os.getenv("API_BASE_URL", "https://api.openai.com/v1")
+MODEL_NAME   = os.getenv("MODEL_NAME",   "gpt-4.1-mini")
+HF_TOKEN     = os.getenv("HF_TOKEN")
+if HF_TOKEN is None:
+    raise ValueError("HF_TOKEN environment variable is required")
 TASK_NAME = os.getenv("MY_ENV_V4_TASK", "echo")
 BENCHMARK = os.getenv("MY_ENV_V4_BENCHMARK", "my_env_v4")
 MAX_STEPS = 8
@@ -92,8 +97,12 @@ def log_step(step: int, action: str, reward: float, done: bool, error: Optional[
 
 def log_end(success: bool, steps: int, score: float, rewards: List[float]) -> None:
     rewards_str = ",".join(f"{r:.2f}" for r in rewards)
-    print(f"[END] success={str(success).lower()} steps={steps} score={score:.3f} rewards={rewards_str}", flush=True)
-
+    score_clamped = min(max(float(score), 0.0), 1.0)
+    print(
+        f"[END] success={str(success).lower()} steps={steps} "
+        f"score={score_clamped:.3f} rewards={rewards_str}",
+        flush=True,
+    )
 
 def build_user_prompt(step: int, last_echoed: str, last_reward: float, history: List[str]) -> str:
     history_block = "\n".join(history[-4:]) if history else "None"
@@ -125,14 +134,13 @@ def get_model_message(client: OpenAI, step: int, last_echoed: str, last_reward: 
         text = (completion.choices[0].message.content or "").strip()
         return text if text else "hello"
     except Exception as exc:
-        print(f"[DEBUG] Model request failed: {exc}", flush=True)
+        print(f"[DEBUG] Model request failed: {exc}", file=sys.stderr, flush=True)
         return "hello"
 
 
 async def main() -> None:
-    client = OpenAI(base_url=API_BASE_URL, api_key=API_KEY)
+    client = OpenAI(base_url=API_BASE_URL, api_key=HF_TOKEN)
 
-    env = await MyEnvV4Env.from_docker_image(IMAGE_NAME)
 
     history: List[str] = []
     rewards: List[float] = []
@@ -180,7 +188,7 @@ async def main() -> None:
         try:
             await env.close()
         except Exception as e:
-            print(f"[DEBUG] env.close() error (container cleanup): {e}", flush=True)
+            print(f"[DEBUG] env.close() error (container cleanup): {e}", file=sys.stderr, flush=True)
         log_end(success=success, steps=steps_taken, score=score, rewards=rewards)
 
 
