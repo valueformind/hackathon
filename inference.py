@@ -44,7 +44,6 @@ STDOUT FORMAT
 
 import asyncio
 import os
-import sys
 import textwrap
 from typing import List, Optional
 
@@ -134,12 +133,12 @@ def get_model_message(client: OpenAI, step: int, last_echoed: str, last_reward: 
         text = (completion.choices[0].message.content or "").strip()
         return text if text else "hello"
     except Exception as exc:
-        print(f"[DEBUG] Model request failed: {exc}", file=sys.stderr, flush=True)
         return "hello"
 
 
 async def main() -> None:
     client = OpenAI(base_url=API_BASE_URL, api_key=HF_TOKEN)
+    env: Optional[MyEnvV4Env] = None
 
 
     history: List[str] = []
@@ -151,6 +150,7 @@ async def main() -> None:
     log_start(task=TASK_NAME, env=BENCHMARK, model=MODEL_NAME)
 
     try:
+        env = await MyEnvV4Env.from_docker_image(IMAGE_NAME)
         result = await env.reset() # OpenENV.reset()
         last_echoed = result.observation.echoed_message
         last_reward = 0.0
@@ -184,11 +184,15 @@ async def main() -> None:
         score = min(max(score, 0.0), 1.0)  # clamp to [0, 1]
         success = score >= SUCCESS_SCORE_THRESHOLD
 
+    except Exception:
+        pass
+
     finally:
-        try:
-            await env.close()
-        except Exception as e:
-            print(f"[DEBUG] env.close() error (container cleanup): {e}", file=sys.stderr, flush=True)
+        if env is not None:
+            try:
+                await env.close()
+            except Exception:
+                pass
         log_end(success=success, steps=steps_taken, score=score, rewards=rewards)
 
 
