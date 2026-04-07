@@ -100,7 +100,7 @@ def log_end(success: bool, steps: int, score: float, rewards: List[float]) -> No
     score_clamped = min(max(float(score), 0.0), 1.0)
     print(
         f"[END] success={str(success).lower()} steps={steps} "
-        f"score={score_clamped:.3f} rewards={rewards_str}",
+        f"score={score_clamped:.2f} rewards={rewards_str}",
         flush=True,
     )
 
