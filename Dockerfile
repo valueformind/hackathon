@@ -65,4 +65,4 @@ ENV MY_ENV_V4_BENCHMARK="my_env_v4"
 #              -v /var/run/docker.sock:/var/run/docker.sock \
 #              rl-coding-env python inference.py
 EXPOSE 7860
-CMD ["sh", "-c", "python inference.py && python -m http.server 7860"]
+CMD ["sh", "-c", "python inference.py && python keepalive_server.py"]
