@@ -57,11 +57,12 @@ ENV IMAGE_NAME=""
 ENV MY_ENV_V4_TASK="echo"
 ENV MY_ENV_V4_BENCHMARK="my_env_v4"
 
-# ── Default entry point: offline demo (no API key required) ─────────────
+# ── Default entry point: run inference, then keep Space alive on :7860 ───
 # Override at runtime:
 #   docker run --rm rl-coding-env python demo_policies.py
 #   docker run --rm rl-coding-env python -m unittest discover -s tests -p 'test_*.py' -v
 #   docker run --rm --env-file .env \
 #              -v /var/run/docker.sock:/var/run/docker.sock \
 #              rl-coding-env python inference.py
-CMD ["sh", "-c", "python demo.py && sleep infinity"]
+EXPOSE 7860
+CMD ["sh", "-c", "python inference.py && python -m http.server 7860"]
