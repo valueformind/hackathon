@@ -1,0 +1,16 @@
+[project]
+name = "rl-coding-env"
+version = "0.1.0"
+description = "OpenEnv-compatible RL coding environment"
+requires-python = ">=3.11"
+dependencies = [
+  "openai>=1.30.0",
+  "docker>=7.0.0",
+  "fastapi>=0.110.0",
+  "uvicorn>=0.29.0",
+  "requests>=2.31.0",
+]
+
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
