@@ -1,0 +1,4 @@
+name: rl-coding-env
+version: 0.1.0
+sdk: docker
+app_port: 7860
