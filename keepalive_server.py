@@ -8,6 +8,8 @@ Why this exists:
 """
 
 import json
+import os
+import sys
 from http.server import BaseHTTPRequestHandler, HTTPServer
 
 
@@ -34,13 +36,41 @@ class KeepAliveHandler(BaseHTTPRequestHandler):
             _ = self.rfile.read(length)
         self._write_ok()
 
+    def do_OPTIONS(self) -> None:  # noqa: N802
+        self.send_response(200)
+        self.send_header("Allow", "GET, HEAD, POST, OPTIONS, PUT, PATCH, DELETE")
+        self.send_header("Access-Control-Allow-Origin", "*")
+        self.send_header(
+            "Access-Control-Allow-Methods", "GET, HEAD, POST, OPTIONS, PUT, PATCH, DELETE"
+        )
+        self.send_header("Access-Control-Allow-Headers", "*")
+        self.send_header("Content-Length", "0")
+        self.end_headers()
+
+    # Some platform probes may use verbs beyond GET/HEAD/POST.
+    # Treat them as liveness checks and return 200.
+    def do_PUT(self) -> None:  # noqa: N802
+        self.do_POST()
+
+    def do_PATCH(self) -> None:  # noqa: N802
+        self.do_POST()
+
+    def do_DELETE(self) -> None:  # noqa: N802
+        self._write_ok()
+
     def log_message(self, fmt: str, *args) -> None:
         # Keep logs clean; inference stdout format must remain strict.
         return
 
 
 def main() -> None:
-    server = HTTPServer(("0.0.0.0", 7860), KeepAliveHandler)
+    port = int(os.getenv("PORT", "7860"))
+    print(
+        f"[keepalive] starting file={__file__} pid={os.getpid()} bind=0.0.0.0:{port}",
+        file=sys.stderr,
+        flush=True,
+    )
+    server = HTTPServer(("0.0.0.0", port), KeepAliveHandler)
     server.serve_forever()
 
 
