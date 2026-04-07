@@ -4,12 +4,16 @@ version = "0.1.0"
 description = "OpenEnv-compatible RL coding environment"
 requires-python = ">=3.11"
 dependencies = [
+  "openenv-core>=0.2.0",
   "openai>=1.30.0",
   "docker>=7.0.0",
   "fastapi>=0.110.0",
   "uvicorn>=0.29.0",
   "requests>=2.31.0",
 ]
+
+[project.scripts]
+server = "server.app:main"
 
 [build-system]
 requires = ["setuptools>=68", "wheel"]

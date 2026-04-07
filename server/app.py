@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+import os
+
 from fastapi import FastAPI
+import uvicorn
 
 from env.openenv_env import OpenEnv
 from tasks.task import YourTask
@@ -42,3 +45,12 @@ def step(action: dict) -> dict:
         "done": bool(result.get("done", False)),
         "info": result.get("info", {}),
     }
+
+
+def main() -> None:
+    port = int(os.getenv("PORT", "7860"))
+    uvicorn.run("server.app:app", host="0.0.0.0", port=port)
+
+
+if __name__ == "__main__":
+    main()
