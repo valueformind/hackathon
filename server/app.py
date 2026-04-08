@@ -31,6 +31,12 @@ class StepRequest(BaseModel):
 
 # ── Routes ────────────────────────────────────────────────────────────────────
 
+@app.get("/")
+def root() -> dict:
+    """Root route — satisfies HF Spaces health probes on GET /."""
+    return {"status": "ok", "service": "rl-coding-env"}
+
+
 @app.get("/health")
 def health() -> dict:
     return {"status": "ok"}

@@ -29,10 +29,11 @@ LABEL python="3.11"
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1
 
-# Runtime system deps (ca-certs needed for HTTPS calls to HF / OpenAI)
+# Runtime system deps (ca-certs + curl for keepalive self-ping)
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
         ca-certificates \
+        curl \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
