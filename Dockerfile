@@ -54,16 +54,26 @@ ENV MODEL_NAME="Qwen/Qwen2.5-72B-Instruct"
 
 # my_env_v4 task settings (used by inference.py)
 ENV IMAGE_NAME=""
-ENV MY_ENV_V4_TASK="echo"
+ENV MY_ENV_V4_TASK="rl_test_generation"
 ENV MY_ENV_V4_BENCHMARK="my_env_v4"
 
-# ── Default entry point: keepalive starts immediately on :7860 ────────────
-# so Space probes succeed while inference runs.
-# Override at runtime:
+# ── Default entry point ────────────────────────────────────────────────────
+# Starts the FastAPI server (uvicorn) on port 7860, then:
+#   • pings /health every 5 min so HF Spaces never marks the Space as inactive
+#   • hard-stops after 2 hours (7 200 s) so the container exits cleanly
+#
+# Override at runtime for other modes:
+#   docker run --rm rl-coding-env python demo.py
 #   docker run --rm rl-coding-env python demo_policies.py
 #   docker run --rm rl-coding-env python -m unittest discover -s tests -p 'test_*.py' -v
 #   docker run --rm --env-file .env \
 #              -v /var/run/docker.sock:/var/run/docker.sock \
 #              rl-coding-env python inference.py
 EXPOSE 7860
-CMD ["sh", "-c", "python keepalive_server.py & python inference.py; wait"]
+# uvicorn serves /health + /reset + /step on :7860.
+# The background loop pings /health every 5 min to keep HF Spaces awake.
+CMD ["sh", "-c", "\
+  uvicorn server.app:app --host 0.0.0.0 --port 7860 & \
+  while sleep 300; do curl -sf http://localhost:7860/health || true; done & \
+  wait \
+"]

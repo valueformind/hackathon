@@ -1,4 +1,8 @@
 name: rl-coding-env
-version: 0.1.0
+version: "0.1.0"
+description: RL coding environment with HTTP endpoints for reset/step style execution.
 sdk: docker
 app_port: 7860
+modes:
+  - sim
+  - prod

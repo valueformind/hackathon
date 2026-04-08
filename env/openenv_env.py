@@ -1,8 +1,43 @@
 """OpenEnv-compatible RL environment for code-diff test generation."""
 
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Union
 
 from tasks.task import YourTask
+from tasks.all_tasks import (
+    NullPointerTask, OffByOneTask, DeadlockTask, SqlInjectionTask,
+    IntegerOverflowTask, RecursionBaseTask, RaceConditionTask,
+    MemoryLeakTask, SwallowedExceptionTask, BinarySearchTask, ALL_TASKS,
+)
+
+# Union type accepted by OpenEnv — any task class works
+AnyTask = Union[
+    YourTask, NullPointerTask, OffByOneTask, DeadlockTask, SqlInjectionTask,
+    IntegerOverflowTask, RecursionBaseTask, RaceConditionTask,
+    MemoryLeakTask, SwallowedExceptionTask, BinarySearchTask,
+]
+
+# Registry: task name → task instance (used by make_env())
+_TASK_REGISTRY: Dict[str, AnyTask] = {t.name: t for t in ALL_TASKS}
+_TASK_REGISTRY[YourTask().name] = YourTask()  # keep original task too
+
+
+def make_env(task_name: str) -> "OpenEnv":
+    """
+    Factory: create an OpenEnv instance for a named task.
+
+    Args:
+        task_name: one of the names in TASK_REGISTRY, e.g. 'null_pointer'.
+
+    Raises:
+        KeyError: if task_name is not registered.
+    """
+    task = _TASK_REGISTRY[task_name]
+    return OpenEnv(task=task)
+
+
+def list_tasks() -> List[str]:
+    """Return all registered task names."""
+    return list(_TASK_REGISTRY.keys())
 
 
 class OpenEnv:
@@ -28,7 +63,7 @@ class OpenEnv:
     # Maximum steps per episode; episode hard-terminates after this.
     MAX_STEPS: int = 20
 
-    def __init__(self, task: YourTask) -> None:
+    def __init__(self, task: AnyTask) -> None:
         self.task = task
         self.state: Dict[str, Any] = {}
         self.is_done: bool = False

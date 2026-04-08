@@ -3,30 +3,69 @@
 from __future__ import annotations
 
 import os
+from typing import Optional
 
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
+from pydantic import BaseModel
 import uvicorn
 
-from env.openenv_env import OpenEnv
-from tasks.task import YourTask
+from env.openenv_env import OpenEnv, make_env, list_tasks
 
 app = FastAPI(title="rl-coding-env")
 
-_task = YourTask()
-_env = OpenEnv(task=_task)
+# Default env uses the original YourTask; replaced per-request via /reset
+_env: OpenEnv = make_env("rl_test_generation")
 _state: dict = {}
 
 
+# ── Request / response models ─────────────────────────────────────────────────
+
+class ResetRequest(BaseModel):
+    task_name: Optional[str] = None   # e.g. "null_pointer"; None → default task
+
+
+class StepRequest(BaseModel):
+    action_type: str
+    payload: dict = {}
+
+
+# ── Routes ────────────────────────────────────────────────────────────────────
+
 @app.get("/health")
-def health() -> dict[str, str]:
+def health() -> dict:
     return {"status": "ok"}
 
 
+@app.get("/tasks")
+def get_tasks() -> dict:
+    """List all available task names."""
+    return {"tasks": list_tasks()}
+
+
 @app.post("/reset")
-def reset() -> dict:
-    global _state
+def reset(body: ResetRequest = ResetRequest()) -> dict:
+    """
+    Start a new episode, optionally for a specific task.
+
+    Body (JSON, all optional):
+        { "task_name": "null_pointer" }
+
+    If task_name is omitted the default task (rl_test_generation) is used.
+    """
+    global _env, _state
+
+    task_name = body.task_name or "rl_test_generation"
+    try:
+        _env = make_env(task_name)
+    except KeyError:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unknown task '{task_name}'. Available: {list_tasks()}",
+        )
+
     _state = _env.reset()
     return {
+        "task": task_name,
         "observation": _state,
         "reward": 0.0,
         "done": False,
@@ -35,8 +74,15 @@ def reset() -> dict:
 
 
 @app.post("/step")
-def step(action: dict) -> dict:
+def step(body: StepRequest) -> dict:
+    """
+    Take one step in the current episode.
+
+    Body:
+        { "action_type": "generate_tests", "payload": { "tests": [...] } }
+    """
     global _state
+    action = {"action_type": body.action_type, "payload": body.payload}
     result = _env.step(action)
     _state = result.get("state", _state)
     return {

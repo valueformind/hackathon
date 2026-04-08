@@ -43,13 +43,15 @@ STDOUT FORMAT
 """
 
 import asyncio
+import json
 import os
 import textwrap
-from typing import List, Optional
+from typing import Any, Dict, List, Optional
 
 from openai import OpenAI
 
 from my_env_v4 import MyEnvV4Action, MyEnvV4Env
+from grader.task_graders import grade_by_task_name, TASK_GRADERS
 
 IMAGE_NAME = os.getenv("IMAGE_NAME")  # If you are using docker image
 
@@ -59,24 +61,39 @@ MODEL_NAME   = os.getenv("MODEL_NAME",   "gpt-4.1-mini")
 HF_TOKEN     = os.getenv("HF_TOKEN")
 if HF_TOKEN is None:
     raise ValueError("HF_TOKEN environment variable is required")
-TASK_NAME = os.getenv("MY_ENV_V4_TASK", "echo")
+
+# MY_ENV_V4_TASK selects which of the 10 tasks to run.
+# Valid values: rl_test_generation, null_pointer, off_by_one, deadlock_detection,
+#               sql_injection, integer_overflow, recursion_base_case, race_condition,
+#               memory_leak, swallowed_exception, binary_search_boundary
+TASK_NAME = os.getenv("MY_ENV_V4_TASK", "rl_test_generation")
 BENCHMARK = os.getenv("MY_ENV_V4_BENCHMARK", "my_env_v4")
 MAX_STEPS = 8
 TEMPERATURE = 0.7
-MAX_TOKENS = 150
-SUCCESS_SCORE_THRESHOLD = 0.1  # normalized score in [0, 1]
+MAX_TOKENS = 512
+SUCCESS_SCORE_THRESHOLD = 0.5   # grader composite_score must be >= this
 
-# Max possible reward: each token contributes 0.1, across all steps
-_MAX_REWARD_PER_STEP = MAX_TOKENS * 0.1
+# Normalisation denominator: max possible raw reward across all steps
+_MAX_REWARD_PER_STEP = 15.0     # rough upper bound per step
 MAX_TOTAL_REWARD = MAX_STEPS * _MAX_REWARD_PER_STEP
 
 SYSTEM_PROMPT = textwrap.dedent(
     """
-    You are interacting with a simple echo environment.
-    Each turn you must send a message. The environment will echo it back.
-    Reward is proportional to message length: reward = len(message) * 0.1
-    Your goal is to maximize total reward by sending meaningful, substantive messages.
-    Reply with exactly one message string — no quotes, no prefixes, just the message text.
+    You are an expert software testing agent operating in an RL environment.
+
+    At every step you receive the current state (buggy code, diff, existing tests,
+    coverage, last test result) and must return ONE JSON action to improve test quality.
+
+    Available action_types:
+      - generate_tests  payload: {"tests": ["def test_...: assert ..."]}
+      - run_tests       payload: {"passed": int, "failed": int, "coverage": float,
+                                  "found_bug": bool, "deadlock_detected": bool,
+                                  "timeout_count": int, "flaky_rate": float}
+      - modify_code     payload: {"code": "<full fixed source>"}
+      - finish          payload: {}  — only call when coverage>=0.8 AND bug found
+
+    Respond with ONLY valid JSON, no markdown, no explanation. Example:
+    {"action_type": "generate_tests", "payload": {"tests": ["def test_zero_div():\\n    try:\\n        divide(1, 0)\\n    except ZeroDivisionError:\\n        pass\\n    else:\\n        assert False, 'expected ZeroDivisionError'"]}}
     """
 ).strip()
 
@@ -103,46 +120,89 @@ def log_end(success: bool, steps: int, score: float, rewards: List[float]) -> No
         flush=True,
     )
 
-def build_user_prompt(step: int, last_echoed: str, last_reward: float, history: List[str]) -> str:
+def build_user_prompt(
+    step: int,
+    obs: Any,
+    last_reward: float,
+    history: List[str],
+) -> str:
+    """Build a task-aware prompt from the current observation."""
+    # obs is a MyEnvV4 Observation object; pull relevant fields gracefully
+    code      = getattr(obs, "code",     "") or ""
+    diff      = getattr(obs, "diff",     "") or ""
+    tests     = getattr(obs, "tests",    []) or []
+    coverage  = getattr(obs, "coverage", 0.0)
     history_block = "\n".join(history[-4:]) if history else "None"
     return textwrap.dedent(
         f"""
-        Step: {step}
-        Last echoed message: {last_echoed!r}
-        Last reward: {last_reward:.2f}
-        Previous steps:
+        Step: {step}  |  Last reward: {last_reward:.2f}  |  Coverage so far: {coverage:.0%}
+        Task: {TASK_NAME}
+
+        === Buggy code ===
+        {code[:600]}
+
+        === Diff ===
+        {diff[:400]}
+
+        === Tests so far ({len(tests)}) ===
+        {chr(10).join(tests[-3:]) if tests else "None"}
+
+        === Recent history ===
         {history_block}
-        Send your next message.
+
+        Return ONE JSON action (generate_tests / run_tests / modify_code / finish).
         """
     ).strip()
 
 
-def get_model_message(client: OpenAI, step: int, last_echoed: str, last_reward: float, history: List[str]) -> str:
-    user_prompt = build_user_prompt(step, last_echoed, last_reward, history)
+def get_model_action(
+    client: OpenAI,
+    step: int,
+    obs: Any,
+    last_reward: float,
+    history: List[str],
+) -> Dict[str, Any]:
+    """Call the LLM and parse its JSON action. Falls back to generate_tests on error."""
+    user_prompt = build_user_prompt(step, obs, last_reward, history)
     try:
         completion = client.chat.completions.create(
             model=MODEL_NAME,
             messages=[
                 {"role": "system", "content": SYSTEM_PROMPT},
-                {"role": "user", "content": user_prompt},
+                {"role": "user",   "content": user_prompt},
             ],
             temperature=TEMPERATURE,
             max_tokens=MAX_TOKENS,
             stream=False,
         )
-        text = (completion.choices[0].message.content or "").strip()
-        return text if text else "hello"
-    except Exception as exc:
-        return "hello"
+        raw = (completion.choices[0].message.content or "").strip()
+        # Strip accidental markdown fences
+        if raw.startswith("```"):
+            raw = raw.split("```")[1]
+            if raw.startswith("json"):
+                raw = raw[4:]
+        action = json.loads(raw)
+        if "action_type" not in action:
+            raise ValueError("missing action_type")
+        return action
+    except Exception:
+        # Safe fallback: generate a minimal test
+        return {
+            "action_type": "generate_tests",
+            "payload": {"tests": [
+                f"def test_task_{TASK_NAME}_step{step}():\n    assert True"
+            ]},
+        }
 
 
 async def main() -> None:
     client = OpenAI(base_url=API_BASE_URL, api_key=HF_TOKEN)
     env: Optional[MyEnvV4Env] = None
 
-
+    # Accumulated episode state
     history: List[str] = []
     rewards: List[float] = []
+    episode_trace: List[Dict[str, Any]] = []   # fed to grader at the end
     steps_taken = 0
     score = 0.0
     success = False
@@ -151,38 +211,58 @@ async def main() -> None:
 
     try:
         env = await MyEnvV4Env.from_docker_image(IMAGE_NAME)
-        result = await env.reset() # OpenENV.reset()
-        last_echoed = result.observation.echoed_message
+        result = await env.reset()
+        obs = result.observation
         last_reward = 0.0
 
         for step in range(1, MAX_STEPS + 1):
             if result.done:
                 break
 
-            message = get_model_message(client, step, last_echoed, last_reward, history)
+            # ── Ask the LLM for a structured JSON action ──────────────────
+            action = get_model_action(client, step, obs, last_reward, history)
+            action_str = json.dumps(action, separators=(",", ":"))
 
-            result = await env.step(MyEnvV4Action(message=message))
+            # ── Execute in env ─────────────────────────────────────────────
+            my_action = MyEnvV4Action(message=action_str)
+            result = await env.step(my_action)
             obs = result.observation
 
-            reward = result.reward or 0.0
-            done = result.done
-            error = None
+            reward  = result.reward or 0.0
+            done    = result.done
+            error   = getattr(result, "last_action_error", None)
 
             rewards.append(reward)
             steps_taken = step
-            last_echoed = obs.echoed_message
             last_reward = reward
 
-            log_step(step=step, action=message, reward=reward, done=done, error=error)
+            log_step(step=step, action=action_str, reward=reward, done=done, error=error)
+            history.append(f"Step {step}: action_type={action.get('action_type')} -> reward {reward:+.2f}")
 
-            history.append(f"Step {step}: {message!r} -> reward {reward:+.2f}")
+            # Record trace entry for grader
+            episode_trace.append({
+                "step": step,
+                "action": action,
+                "reward": reward,
+                "done": done,
+            })
 
             if done:
                 break
 
+        # ── Raw reward normalisation ───────────────────────────────────────
         score = sum(rewards) / MAX_TOTAL_REWARD if MAX_TOTAL_REWARD > 0 else 0.0
-        score = min(max(score, 0.0), 1.0)  # clamp to [0, 1]
-        success = score >= SUCCESS_SCORE_THRESHOLD
+        score = min(max(score, 0.0), 1.0)
+
+        # ── Task-specific grading ──────────────────────────────────────────
+        if TASK_NAME in TASK_GRADERS:
+            grade_report = grade_by_task_name(TASK_NAME, episode_trace)
+            composite    = grade_report.get("composite_score", score)
+            # Use grader composite score if it gives a higher-resolution signal
+            score   = float(composite)
+            success = bool(grade_report.get("passed", score >= SUCCESS_SCORE_THRESHOLD))
+        else:
+            success = score >= SUCCESS_SCORE_THRESHOLD
 
     except Exception:
         pass

@@ -6,6 +6,11 @@ openai>=1.30.0
 # to spin up and tear down environment containers at runtime:
 docker>=7.0.0
 
+# Required for server/app.py (FastAPI HTTP server — /health, /reset, /step):
+fastapi>=0.110.0
+uvicorn>=0.29.0
+requests>=2.31.0
+
 # ── Testing (optional, for local development) ────────────────────────
 # Uncomment to use pytest instead of unittest:
 # pytest>=8.0.0
